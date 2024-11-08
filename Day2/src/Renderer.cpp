@@ -26,7 +26,15 @@ bool Renderer::hitScene(const Ray &ray, RayHit &hit) const {
     hit.idx = -1;
     for(int i = 0; i < bodies.size();++ i) {
         RayHit _hit;
-        if(bodies[i].hit(ray, _hit) && _hit.t < hit.t) {
+        /// 壁
+        if(bodies[i].hitSphere(ray, _hit) && _hit.t < hit.t) {
+            hit.t = _hit.t;
+            hit.idx = i;
+            hit.point = _hit.point;
+            hit.normal = _hit.normal;
+        }
+        /// 円柱
+        else if(bodies[i].hitCylinder(ray, _hit) && _hit.t < hit.t) {
             hit.t = _hit.t;
             hit.idx = i;
             hit.point = _hit.point;
@@ -153,3 +161,7 @@ void Renderer::computeLocalFrame(const Eigen::Vector3d &w, Eigen::Vector3d &u, E
 
     v = w.cross(u);
 }
+
+/// add
+/// フレネル
+

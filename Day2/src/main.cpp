@@ -5,9 +5,11 @@
 
 void intersectTest() {
     const Sphere sphere(1, Eigen::Vector3d::Zero());
+    const Cylinder cylinder(1.0, 2.0, Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY());
     Ray ray(Eigen::Vector3d(0, 0, 10), Eigen::Vector3d(0, 0, -1));
     RayHit hit;
     sphere.hit(ray, hit);
+    cylinder.hit(ray, hit);
 
     std::cout << "t:\t" << hit.t << std::endl;
     std::cout << "normal:\t(" << hit.normal.transpose() << ")" << std::endl;
@@ -20,6 +22,10 @@ void sample() {
             Body(Sphere(1.0, Eigen::Vector3d(0, 3, 0)), Material(Color(0.1, 1, 0.1), 0.8)),
             Body(Sphere(1.0, Eigen::Vector3d(0, -3, 0)), Material(Color(0.1, 0.1, 1), 0.8)),
             Body(Sphere(2.0, Eigen::Vector3d(0, 10, 10)), Material(Color(1, 1, 1), 0.8, 10)),
+            Body(Cylinder(1.0, 2.0, Eigen::Vector3d::Zero(), Eigen::Vector3d::UnitY()), Material(Color(1, 0.1, 0.1), 0.8)),
+            Body(Cylinder(1.0, 2.0, Eigen::Vector3d(0, 3, 0), Eigen::Vector3d::UnitY()), Material(Color(0.1, 1, 0.1), 0.8)),
+            Body(Cylinder(1.0, 2.0, Eigen::Vector3d(0, -3, 0), Eigen::Vector3d::UnitY()), Material(Color(0.1, 0.1, 1), 0.8)),
+            Body(Cylinder(2.0, 4.0, Eigen::Vector3d(0, 10, 10), Eigen::Vector3d::UnitY()), Material(Color(1, 1, 1), 0.8, 10)),
     };
 
     const Eigen::Vector3d campos(0, 10, 100);
@@ -33,8 +39,8 @@ void sample() {
     const auto image1 = renderer.render();
     const auto image2 = renderer.directIlluminationRender(samples).apply_reinhard_extended_tone_mapping().apply_gamma_correction();
 
-    image1.save("sample_image.png");
-    image2.apply_reinhard_extended_tone_mapping().save("sample.png");
+    image1.save("sample_image_cylinder.png");
+    image2.apply_reinhard_extended_tone_mapping().save("sample_cylinder.png");
 }
 
 void roomRenderingSample() {
@@ -49,12 +55,12 @@ void roomRenderingSample() {
     };
 
     std::vector<Body> bodies {
-            Body(Sphere(16.5, Eigen::Vector3d(25, -14.5, -10)), Material(Color(0.75, 0.25, 0.25), 0.8, 0.0)),
-            Body(Sphere(16.5, Eigen::Vector3d(-23, -14.5, 7)), Material(Color(0.99, 0.99, 0.99), 0.8, 0.0)),
+            Body(Cylinder(1.0, 40.0, Eigen::Vector3d(0, -14.5, 0), Eigen::Vector3d::UnitY()), Material(Color(0.99, 0.99, 0.99), 0.8, 0.0)),
     };
 
     const std::vector<Body> lights {
-            Body(Sphere(5, Eigen::Vector3d(0, 34.8, 0)), Material(codeToColor("#e597b2"), 1.0, 30))
+            //Body(Sphere(5, Eigen::Vector3d(0, 34.8, 10)), Material(codeToColor("#e597b2"), 1.0, 30))
+            Body(Sphere(5, Eigen::Vector3d(0, 34.8, 10)), Material(codeToColor("#e597b2"), 1.0, 30))
     };
 
     for(const auto & room_wall : room_walls) {
@@ -74,11 +80,11 @@ void roomRenderingSample() {
     const Renderer renderer(bodies, camera, Color(0.1, 0.1, 0.1));
     const auto image = renderer.render().apply_reinhard_extended_tone_mapping().apply_gamma_correction();
 
-    const unsigned int samples = 1e3;
+    const unsigned int samples = 1e4;
     const auto image2 = renderer._directIlluminationRender(samples).apply_reinhard_extended_tone_mapping().apply_gamma_correction();
 
-    image.save("sample_image.png");
-    image2.save("sample.png");
+    image.save("sample_image_cylinder.png");
+    image2.save("sample_10000_cylinder.png");
 }
 
 int main() {

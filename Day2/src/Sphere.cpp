@@ -32,5 +32,6 @@ bool Sphere::hit(const Ray &ray, RayHit &hit) const {
     } else {
         hit.normal = -outwardNormal;
     }
+
     return true;
 }

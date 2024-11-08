@@ -3,7 +3,7 @@ project(Day2)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_executable(${PROJECT_NAME} src/main.cpp src/Image.cpp src/Ray.h src/Sphere.cpp src/Sphere.h src/Film.h src/Camera.h src/Camera.cpp src/Body.h src/Renderer.cpp src/Renderer.h src/Material.h src/Color.cpp)
+add_executable(${PROJECT_NAME} src/main.cpp src/Image.cpp src/Ray.h src/Sphere.cpp src/Sphere.h src/Film.h src/Camera.h src/Camera.cpp src/Body.h src/Renderer.cpp src/Renderer.h src/Material.h src/Color.cpp src/Cylinder.cpp src/Cylinder.h)
 
 find_package(Eigen3 CONFIG REQUIRED)
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
