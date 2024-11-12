@@ -55,7 +55,7 @@ void roomRenderingSample() {
     };
 
     std::vector<Body> bodies {
-            Body(Cylinder(1.0, 40.0, Eigen::Vector3d(0, -14.5, 0), Eigen::Vector3d::UnitY()), Material(Color(0.99, 0.99, 0.99), 0.8, 0.0)),
+            Body(Cylinder(1.0, 40.0, Eigen::Vector3d(0, -14.5, 0), Eigen::Vector3d::UnitY()), Material(codeToColor("#864A2B"), 0.8, 0.0)),
     };
 
     const std::vector<Body> lights {
