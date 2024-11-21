@@ -10,6 +10,7 @@
 #include "Body.h"
 #include "Camera.h"
 #include <random>
+#include "Eigen/Dense"
 
 class Renderer {
 public:
@@ -36,7 +37,27 @@ public:
 
     void diffuseSample(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray) const;
 
+    void diffuseSampleHair(Ray &in_ray, const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray) const;
+
+    void marschnerSample(const Ray &in_ray, const Eigen::Vector3d &incidentPoint,
+                         const Eigen::Vector3d &hairDir, const Material &material,
+                         Ray &out_Ray) const;
+
     static void computeLocalFrame(const Eigen::Vector3d &w, Eigen::Vector3d &u, Eigen::Vector3d &v);
+
+    static void computeLocalFrameHair(const Eigen::Vector3d &u, Eigen::Vector3d &w, Eigen::Vector3d &v);
+
+    Color kajiyaKayShading(const Eigen::Vector3d &V, const Eigen::Vector3d &L,
+                           const Eigen::Vector3d &H, const Material &material) const;
+
+    Color marschnerShading(const Eigen::Vector3d &V, const Eigen::Vector3d &L,
+                           const Eigen::Vector3d &H, const Material &material) const;
+
+private:
+    // Marschnerモデルのヘルパー関数
+    double computeLongitudinalScattering(double theta_i, double theta_r, double beta_m) const;
+    double computeAzimuthalScattering(double phi, double beta_n) const;
+
 };
 
 
