@@ -23,7 +23,7 @@ Camera::Camera(Eigen::Vector3d position, const Eigen::Vector3d &dir, const int &
 }
 
 void Camera::filmView(const unsigned int &p_x, const unsigned int &p_y, Ray &out_ray) const {
-    const auto pixelLocalPos = film.pixelLocalPosition(p_x, p_y);
+    const auto pixelLocalPos = film.pixelLocalPosition(p_x, p_y, <#initializer#>, <#initializer#>);
 
     /// フィルムのピクセルのローカル座標をワールド座標に変換(カメラのorgを含む平面上に置く)
     const Eigen::Vector3d pixelWorldPos = org + film.filmSize.x() * right * (pixelLocalPos.x() - 0.5) + film.filmSize.y() * up * (0.5 - pixelLocalPos.y()) + focalLength * dir;

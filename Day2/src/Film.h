@@ -26,8 +26,14 @@ struct Film {
      : resolution(Eigen::Vector2i{resolutionHeight * aspectRatio, resolutionHeight}),
      filmSize(Eigen::Vector2d{filmHeight * aspectRatio, filmHeight}) {}
 
-     Eigen::Vector2d pixelLocalPosition(const unsigned int &x, const unsigned int &y) const {
-         return Eigen::Vector2d{(x + 0.5) / resolution.x(), (y + 0.5) / resolution.y()};
+    Eigen::Vector2d
+    pixelLocalPosition(const unsigned int &x, const unsigned int &y) const {
+        return Eigen::Vector2d{(x + 0.5) / resolution.x(), (y + 0.5) / resolution.y()};
+    }
+
+     Eigen::Vector2d
+     pixelLocalPosition_random(const unsigned int &x, const unsigned int &y, const double &r_x, const double &r_y) const {
+         return Eigen::Vector2d{(x + r_x) / resolution.x(), (y + r_y) / resolution.y()};
      }
 };
 

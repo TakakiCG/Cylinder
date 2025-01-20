@@ -27,6 +27,9 @@ public:
     Camera(Eigen::Vector3d position, const Eigen::Vector3d &dir, const int &resolutionHeight, double aspectRatio, double verticalFoV, double focalLength=1.0);
     void filmView(const unsigned int &p_x, const unsigned int &p_y, Ray &out_ray) const;
 
+    void filmView_random(const unsigned int &p_x, const unsigned int &p_y, const double &r_x, const double &r_y, Ray &out_ray) const;
+
+
     const Film &getFilm() const;
 
     Eigen::Vector3d dir;

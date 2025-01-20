@@ -63,13 +63,54 @@ std::vector<Body> HairGenerator::generateHairs(int numHairs, int numSegments, do
             double segmentLength = segmentDir.norm();
             if (segmentLength > 1e-6) {
                 segmentDir.normalize();
-                Cylinder cylinder(hairRadius, segmentLength, prevPoint, segmentDir);
-                Material hairMaterial(Color(0.4, 0.2, 0.1), 0.2, 0.0, 0.1, 50.0,
-                                      1.55, Color(0.2, 0.1, 0.05), 0.3, 0.3, Material::MARSCHNER);
+                Cylinder cylinder(hairRadius, segmentLength, prevPoint, segmentDir);    // 黒茶#25160E
+                Material hairMaterial(Color(0.2, 0.1, 0.05), 0.0, 0.0, 0.7, 150.0,
+                                      1.55, Color(0.2, 0.1, 0.05), 0.3, 0.3, Material::KAJIYA_KAY);
+//                Cylinder cylinder(hairRadius, segmentLength, prevPoint, segmentDir);
+//                Material hairMaterial(Color(0.005, 0.005, 0.005), 0.2, 0.0, 0.7, 300.0,
+//                                      1.55, Color(0.2, 0.1, 0.05), 0.3, 0.3, Material::KAJIYA_KAY); // black
                 hairs.emplace_back(cylinder, hairMaterial);
             }
             prevPoint = currentPoint;
         }
+    }
+
+    return hairs;
+}
+
+std::vector<Body> HairGenerator::generateStraightHairsInLine(int numHairs, double hairRadius, const Eigen::Vector3d& startPoint, double hairLength) {
+    std::vector<Body> hairs;
+
+    // 髪の毛は全て下向き
+    Eigen::Vector3d direction(0, -1, 0);
+    direction.normalize(); // 念のため正規化
+
+    // マテリアル
+    Material hairMaterial(
+            //Color(1.0, 1.0, 1.0),
+            //codeToColor("#f9c89b"),
+            Color(0.2, 0.1, 0.05), // base color
+            0.4,   // ambient
+            0.0,   // diffuse
+            0.5,   // specular
+            150.0, // shininess
+            1.55,  // index of refraction
+            Color(0.2, 0.1, 0.05), // secondary color
+            0.3,   // Kajiya-Kay parameters
+            0.3,
+            Material::KAJIYA_KAY
+    );
+
+    for (int i = 0; i < numHairs; ++i) {
+        // x方向に髪の半径2倍ずつオフセットして配置
+        Eigen::Vector3d topPosition = startPoint + Eigen::Vector3d(i * (2.0 * hairRadius), 0.0, 0.0);
+
+        // Cylinderは、中心点と方向ベクトル、および半径・長さを用いて定義
+        // ここでは topPosition を円柱の上端とし、directionにhairLengthだけ伸ばした円柱を作る
+        // Cylinderコンストラクタは (半径, 長さ, 起点, 方向) と仮定する。
+        Cylinder cylinder(hairRadius, hairLength, topPosition, direction);
+
+        hairs.emplace_back(cylinder, hairMaterial);
     }
 
     return hairs;

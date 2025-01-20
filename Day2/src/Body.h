@@ -50,6 +50,11 @@ struct Body {
         return material.kd * material.color;
     }
 
+    /// 拡散反射率成分を取得する関数
+    Eigen::Vector3d getKs() const {
+        return material.ks * material.color;
+    }
+
     /// 球の法線ベクトルを取得する関数
     Eigen::Vector3d getNormalSphere(const Eigen::Vector3d &p) const {
         return  (p - sphere.center).normalized();
