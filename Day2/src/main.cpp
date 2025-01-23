@@ -156,43 +156,161 @@ void roomRenderingSample() {
 
 }
 
-int main() {
-    auto start = std::chrono::steady_clock::now();
-    std::cout << "Hello, World!" << std::endl;
-    intersectTest();
+// int main() {
+//     auto start = std::chrono::steady_clock::now();
+//     std::cout << "Hello, World!" << std::endl;
+//     intersectTest();
+//
+//     roomRenderingSample();
+//
+//     auto end = std::chrono::steady_clock::now();
+//     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+//     auto minutes = std::chrono::duration_cast<std::chrono::minutes>(duration);
+//     auto seconds = duration - minutes;
+//     std::cout << "経過時間: " << minutes.count() << " 分 " << seconds.count() << " 秒" << std::endl;
+//     return 0;
+// }
 
-    roomRenderingSample();
+cv::Mat createAcademicColorBar(int height,
+                               int barWidth,
+                               int textMargin,
+                               double minValue = 0.0,
+                               double maxValue = 255.0)
+{
+    // 返す画像は height x (barWidth + textMargin) のサイズ
+    // カラー3チャネル (BGR) で真っ黒に初期化
+    cv::Mat colorBar(height, barWidth + textMargin, CV_8UC3, cv::Scalar(0, 0, 0));
 
-    auto end = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
-    auto minutes = std::chrono::duration_cast<std::chrono::minutes>(duration);
-    auto seconds = duration - minutes;
-    std::cout << "経過時間: " << minutes.count() << " 分 " << seconds.count() << " 秒" << std::endl;
+    // ---------------------------
+    // 1. 左側に配置するグレースケールバーを作成
+    // ---------------------------
+    // グレースケール1チャネル (barWidth 分の横幅)
+    cv::Mat grayBar(height, barWidth, CV_8UC1);
+
+    // 下が0 (最小値) で上が255 (最大値) になるように
+    for (int i = 0; i < height; ++i) {
+        int value = static_cast<int>(
+            ((height - 1 - i) / static_cast<double>(height - 1)) * 255.0
+        );
+        grayBar.row(i).setTo(value);
+    }
+
+    // Jetカラーマップを適用 (他のカラーマップでもOK)
+    cv::Mat colorMapBar;
+    cv::applyColorMap(grayBar, colorMapBar, cv::COLORMAP_JET);
+
+    // colorBar の左側 (0,0) ～ (barWidth-1, height-1) にコピー
+    colorMapBar.copyTo(colorBar(cv::Rect(0, 0, barWidth, height)));
+
+    // ---------------------------
+    // 2. 右側のテキスト・目盛り部分を白で塗りつぶす
+    // ---------------------------
+    cv::rectangle(colorBar,
+                  cv::Point(barWidth, 0),               // テキスト領域の左上
+                  cv::Point(barWidth + textMargin, height - 1), // テキスト領域の右下
+                  cv::Scalar(255, 255, 255),           // 白
+                  cv::FILLED);
+
+    // ---------------------------
+    // 3. メモリ (0, 中間値, 255) とラベル (テキスト) を描画
+    // ---------------------------
+    int fontFace = cv::FONT_HERSHEY_SIMPLEX;
+    double fontScale = 0.45;
+    int thickness = 1;
+
+    // メモリ位置と値
+    std::vector<std::pair<int, int>> ticks = {
+        {height - 1, static_cast<int>(minValue)},       // 最下部 (0%)
+        {height / 2, static_cast<int>((minValue + maxValue) / 2)}, // 中間値 (50%)
+        {0, static_cast<int>(maxValue)}                // 最上部 (100%)
+    };
+
+    for (const auto &tick : ticks) {
+        int y = tick.first;   // y座標
+        int value = tick.second; // メモリ値
+
+        // ラベル (整数値)
+        std::ostringstream labelStream;
+        labelStream << value;
+        std::string label = labelStream.str();
+
+        // テキストサイズを取得
+        int baseline = 0;
+        cv::Size textSize = cv::getTextSize(label, fontFace, fontScale, thickness, &baseline);
+
+        // テキストを描画する座標
+        cv::Point textOrg;
+        if (y == 0) { // 最上部（最大値）の場合、テキストを少し下げる
+            textOrg = cv::Point(barWidth + 5, y + textSize.height);
+        } else if (y == height - 1) { // 最下部（最小値）の場合、テキストを少し上げる
+            textOrg = cv::Point(barWidth + 5, y - textSize.height / 2);
+        } else { // 中間値はそのまま中央揃え
+            textOrg = cv::Point(barWidth + 5, y + textSize.height / 2 - 2);
+        }
+
+        // 目盛りの線 (バー末端付近に短い横線)
+        cv::line(colorBar,
+                 cv::Point(barWidth - 5, y),       // 少し左にオフセット
+                 cv::Point(barWidth,     y),       // バー右端
+                 cv::Scalar(0, 0, 0),             // 黒い目盛り線
+                 1);
+
+        // テキストを描画
+        cv::putText(colorBar,
+                    label,
+                    textOrg,
+                    fontFace,
+                    fontScale,
+                    cv::Scalar(0, 0, 0),  // 黒い文字
+                    thickness);
+    }
+
+    return colorBar;
+}
+
+int main()
+{
+    // 1. 入力画像を読み込む (グレースケール)
+    cv::Mat inputImage = cv::imread("passTracing_sample_5000_KK_10000_kd02_ks07_n150.png", cv::IMREAD_GRAYSCALE);
+    if (inputImage.empty()) {
+        std::cerr << "Error: Could not open the image file!" << std::endl;
+        return -1;
+    }
+
+    // 2. 入力画像の最小値・最大値を取得
+    double minVal, maxVal;
+    cv::minMaxLoc(inputImage, &minVal, &maxVal);
+
+    // 3. 画像を 0～255 に正規化 (可視化用)
+    cv::Mat normalizedImage;
+    cv::normalize(inputImage, normalizedImage, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+
+    // 4. ヒートマップを作成
+    cv::Mat heatmap;
+    cv::applyColorMap(normalizedImage, heatmap, cv::COLORMAP_JET);
+
+    // 5. カラーバーを作成 (範囲は0～255)
+    int barHeight = heatmap.rows;
+    int barWidth = 40;    // 実際のカラーグラデーション部分の幅
+    int textMargin = 70;  // 目盛り用マージン (テキスト描画領域)
+
+    cv::Mat colorBar = createAcademicColorBar(barHeight,
+                                              barWidth,
+                                              textMargin,
+                                              0,     // カラーバーの最小値
+                                              255);  // カラーバーの最大値
+
+    // 6. ヒートマップとカラーバーを横に結合
+    cv::Mat combined;
+    cv::hconcat(heatmap, colorBar, combined);
+
+    // 7. 結果を保存
+    cv::imwrite("heatmap_pass_kd02_ks07_n150.png", combined);
+
+    // 8. 結果を表示
+    cv::imshow("Heatmap with Academic Colorbar", combined);
+    cv::waitKey(0);
+
     return 0;
 }
 
-//int main(int argc, char** argv) {
-//    // 画像を読み込む
-//    Mat image1 = imread("passTracing_sample_1000_KK_5000_nowall.png", IMREAD_GRAYSCALE);
-//    Mat image2 = imread("rayTracing_sample_1000_KK_5000.png", IMREAD_GRAYSCALE);
-//
-//    if (image1.empty() || image2.empty()) {
-//        cout << "Could not open or find the images!" << endl;
-//        return -1;
-//    }
-//
-//    // 輝度差を計算する
-//    Mat diff;
-//    absdiff(image1, image2, diff);
-//
-//    // 結果を表示する
-//    imshow("Image 1", image1);
-//    imshow("Image 2", image2);
-//    imshow("Difference", diff);
-//
-//    // 結果を保存する
-//    imwrite("difference.jpg", diff);
-//
-//    waitKey(0);
-//    return 0;
-//}
