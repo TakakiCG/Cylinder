@@ -14,7 +14,7 @@ int trace_num = 0;
 
 /// シーン内の物体、カメラ、背景色を初期化する
 Renderer::Renderer(const std::vector<Body> &bodies, Camera camera, Color bgColor)
-        : bodies(bodies), camera(std::move(camera)), bgColor(std::move(bgColor)), engine(0), dist(0, 1){
+        : bodies(bodies), camera(std::move(camera)), bgColor(std::move(bgColor)), engine(0), dist(0, 1), exceptionCount(0){
 }
 
 /// 乱数生成：0から1の範囲で乱数を返す
@@ -240,6 +240,10 @@ Image Renderer::_directIlluminationRender(const unsigned int &samples) const {
 
 Image Renderer::passTracingRender(const unsigned int &samples) const {
     Image image(camera.getFilm().resolution.x(), camera.getFilm().resolution.y());
+
+    exceptionCount = 0; // カウントの初期化
+
+
     /// フィルム上のピクセル全てに向けてレイを飛ばす
 #pragma omp parallel for
     for (int p_y = 0; p_y < image.height; p_y++) {
@@ -263,152 +267,56 @@ Image Renderer::passTracingRender(const unsigned int &samples) const {
             image.pixels[p_idx] = color;
         }
     }
+    printExceptionCount(); // カウントを出力
     return image;
 }
 
-//Image Renderer::_directIlluminationRender_anti_areas(const unsigned int &samples, const unsigned int &areas_n_samples) const {
-//    Image image(camera.getFilm().resolution.x(), camera.getFilm().resolution.y());
-//    /// フィルム上のピクセル全てに向けてレイを飛ばす
-//#pragma omp parallel for
-//    for (int p_y = 0; p_y < image.height; p_y++) {
-//        for (int p_x = 0; p_x < image.width; p_x++) {
-//            //const unsigned int areas_n_samples = 10;
-//            Color pixel_color = Color::Zero();
-//            const int p_idx = p_y * image.width + p_x;
-//
-//            for (int areas_sample_idx = 0; areas_sample_idx < areas_n_samples; areas_sample_idx++) {
-//                Ray ray;
-//                RayHit hit;
-//                const double r_x = rand();
-//                const double r_y = rand();
-//                camera.filmView_random(p_x, p_y, r_x, r_y, ray);
-//
-//                if (hitScene(ray, hit)) {
-//                    if (bodies[hit.idx].isLight()) {    // 光源ならそのemissionを加える
-//
-//                        //image.pixels[p_idx] = bodies[hit.idx].getEmission();
-//                        pixel_color += bodies[hit.idx].getEmission();
-//
-//                    } else {
-//
-//                        Color reflectRadiance = Color::Zero();
-//                        Material material = bodies[hit.idx].material;
-//
-//                        if (bodies[hit.idx].type == Body::Type::Sphere) {    // wall(Sphere)ならdiffuseSample
-//                            for (int i = 0; i < samples; ++i) {
-//                                Ray _ray;
-//                                RayHit _hit;
-//
-//                                diffuseSample(hit.point, hit.normal, _ray);
-//
-//                                /// もしBodyに当たったら,その発光量を加算する
-//                                if (hitScene(_ray, _hit) && bodies[_hit.idx].isLight()) {
-//                                    reflectRadiance += bodies[hit.idx].getKd().cwiseProduct(
-//                                            bodies[_hit.idx].getEmission());
-//                                }
-//                            }
-//
-//                        } else if (bodies[hit.idx].type == Body::Type::Cylinder) {  // hair(Cylinder)ならmodel分別
-//
-//                            if (material.shadingModel == Material::KAJIYA_KAY) {    // Kajiya Kay
-//                                for (int i = 0; i < samples; ++i) {
-//                                    //std::cout << i << "/" << samples << std::endl;
-//                                    Ray _ray;
-//                                    RayHit _hit;
-//
-//                                    //diffuseSampleHair(ray, hit.point, bodies[hit.idx].cylinder.axis, _ray);
-//
-//                                    // eval diffuse
-//                                    if (hitScene(_ray, _hit) && bodies[_hit.idx].isLight()) {
-//                                        // 光源からの放射輝度
-//                                        Color emission = bodies[_hit.idx].getEmission();
-//
-//                                        // 髪の方向
-//                                        Eigen::Vector3d H = bodies[hit.idx].cylinder.axis.normalized();
-//
-//                                        // 光源方向 L
-//                                        Eigen::Vector3d L = (_hit.point - hit.point).normalized();
-//
-//                                        // 視線方向 V
-//                                        Eigen::Vector3d V = -ray.dir.normalized();
-//
-//                                        // 法線ベクトル N（Kajiya-Kayモデル）
-//                                        Eigen::Vector3d N = V - H * (V.dot(H));
-//                                        double N_norm = N.norm();
-//                                        if (N_norm > 1e-6) {
-//                                            N /= N_norm;
-//                                        } else {
-//                                            N = H.unitOrthogonal();
-//                                        }
-//
-//                                        // H.dot(L) のクランプ
-//                                        double hDotL = std::clamp(H.dot(L), -1.0, 1.0);
-//                                        double diffuseTerm = sqrt(std::max(0.0, 1.0 - hDotL * hDotL));
-//                                        //double diffuseTerm = std::max(0.0, 1.0 - hDotL * hDotL) / sqrt(std::max(0.0, 1.0 - hDotL * hDotL));
-//
-//                                        // H.dot(V) のクランプ
-//                                        double hDotV = std::clamp(H.dot(V), -1.0, 1.0);
-//                                        //double specularTerm = pow(sqrt(std::max(0.0, 1.0 - hDotV * hDotV)), bodies[hit.idx].material.n);
-//                                        double specularTerm = pow(sqrt(std::max(0.0, 1.0 - hDotL * hDotL)) *
-//                                                                  sqrt(std::max(0.0, 1.0 - hDotV * hDotV)) -
-//                                                                  hDotL * hDotV,
-//                                                                  bodies[hit.idx].material.n);
-//
-//                                        // マテリアル特性の取得
-//                                        Color kd = bodies[hit.idx].getKd();
-//                                        double ks = bodies[hit.idx].material.ks;
-//
-//                                        // Kajiya Kayモデルを計算
-//                                        Color shading = kd * diffuseTerm + ks * specularTerm * Color::Ones();
-//
-//                                        reflectRadiance += shading.cwiseProduct(emission);
-//
-//                                    }
-//                                }
-//
-//                            } else if (material.shadingModel == Material::MARSCHNER) {  // Marschner
-//                                for (int i = 0; i < samples; ++i) {
-//                                    Ray _ray;
-//                                    RayHit _hit;
-//
-//                                    marschnerSample(ray, hit.point, bodies[hit.idx].cylinder.axis, material, _ray);
-//
-//                                    if (hitScene(_ray, _hit) && bodies[_hit.idx].isLight()) {
-//                                        // 光源からの放射輝度
-//                                        Color emission = bodies[_hit.idx].getEmission();
-//
-//                                        // 髪の方向 H
-//                                        Eigen::Vector3d H = bodies[hit.idx].cylinder.axis.normalized();
-//
-//                                        // 光源方向 L
-//                                        Eigen::Vector3d L = (_hit.point - hit.point).normalized();
-//
-//                                        // 視線方向 V
-//                                        Eigen::Vector3d V = -ray.dir.normalized();
-//
-//                                        // Marschnerモデルを計算
-//                                        Color shading = marschnerShading(V, L, H, material);
-//
-//                                        reflectRadiance += shading.cwiseProduct(emission);
-//                                    }
-//                                }
-//                            }
-//
-//                        }
-//                        /// 自己発光 + 反射光
-//                        // image.pixels[p_idx] = reflectRadiance / static_cast<double>(samples);   // サンプル数分足した放射輝度の平均
-//                        pixel_color += reflectRadiance / static_cast<double>(samples);
-//                    }
-//                } else {
-//                    pixel_color += bgColor;
-//                }
-//            }
-//            image.pixels[p_idx] = pixel_color / static_cast<double>(areas_n_samples);
-//        }
-//    }
-//
-//    return image;
-//}
+Image Renderer::passTracingRender_antiAreas(const unsigned int &samples) const {
+    Image image(camera.getFilm().resolution.x(), camera.getFilm().resolution.y());
+
+    exceptionCount = 0; // カウントの初期化
+
+    const unsigned int subPixelSamples = 8; // 各ピクセルをサブピクセルに分割
+
+    /// フィルム上のピクセル全てに向けてレイを飛ばす
+#pragma omp parallel for
+    for (int p_y = 0; p_y < image.height; p_y++) {
+        for (int p_x = 0; p_x < image.width; p_x++) {
+            const int p_idx = p_y * image.width + p_x;
+            Color accumulatedColor = Color::Zero();
+
+            for (unsigned int s = 0; s < subPixelSamples; ++s) {
+                for (unsigned int t = 0; t < subPixelSamples; ++t) {
+                    // サブピクセル内のランダムな位置を計算
+                    double subPixelOffsetX = (s + rand()) / subPixelSamples;
+                    double subPixelOffsetY = (t + rand()) / subPixelSamples;
+
+                    // レイを生成
+                    Ray ray;
+                    camera.filmView(p_x + subPixelOffsetX, p_y + subPixelOffsetY, ray);
+
+                    RayHit hit;
+                    if (hitScene(ray, hit)) {
+                        Color subPixelColor = Color::Zero();
+                        for (unsigned int i = 0; i < samples; ++i) {
+                            subPixelColor += trace(ray, hit);
+                        }
+                        subPixelColor /= static_cast<double>(samples);
+                        accumulatedColor += subPixelColor;
+                    } else {
+                        accumulatedColor += bgColor;
+                    }
+                }
+            }
+
+            // サブピクセルの平均を計算してピクセルに格納
+            image.pixels[p_idx] = accumulatedColor / static_cast<double>(subPixelSamples * subPixelSamples);
+        }
+    }
+
+    printExceptionCount(); // カウントを出力
+    return image;
+}
 
 Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
     if(!hit.isHit()) {
@@ -431,7 +339,6 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
     if (rand() > p_survive) {
         return out_color; // 打ち切り
     }
-    double rr_scale = 1.0 / p_survive; // Throughput 補正
 
     // 入射方向
     Eigen::Vector3d wi = -ray.dir.normalized();
@@ -461,26 +368,26 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
 
             hitScene(_ray, _hit);
 
-//            // レイを飛ばす髪の軸方向
-//            const Eigen::Vector3d T = bodies[hit.idx].cylinder.axis.normalized();
-//            // 次のレイの方向 L
-//            const Eigen::Vector3d L = (_hit.point - hit.point).normalized();
-//            // 前の髪から次の髪の方向(視線方向) V
-//            const Eigen::Vector3d V = -ray.dir.normalized();
-//
-//            const double tDotL = std::clamp(T.dot(L), -1.0, 1.0);
-//            // 拡散BRDF
-//            const double diffuseTerm = sqrt(std::max(0.0, 1.0 - tDotL * tDotL));
+            // レイを飛ばす髪の軸方向
+            const Eigen::Vector3d T = bodies[hit.idx].cylinder.axis.normalized();
+            // 次のレイの方向 L
+            const Eigen::Vector3d L = (_hit.point - hit.point).normalized();
+            // 前の髪から次の髪の方向(視線方向) V
+            const Eigen::Vector3d V = -ray.dir.normalized();
+
+            const double tDotL = std::clamp(T.dot(L), -1.0, 1.0);
+            // 拡散BRDF
+            const double diffuseTerm = sqrt(std::max(0.0, 1.0 - tDotL * tDotL));
 
             if(bodies[_hit.idx].isLight()) {
                 // 光源の輝度
                 const Color emission = bodies[_hit.idx].getEmission();
-                //out_color += diffuseTerm * hitBody.getKd().cwiseProduct(emission) / kd;
-                out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
+                out_color += diffuseTerm * hitBody.getKd().cwiseProduct(emission) / kd; // sin１個のみに沿わせる
+                //out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
             }
             else{
-                //out_color += diffuseTerm * hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
-                out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+                out_color += diffuseTerm * hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+                //out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
             }
         }
         else if(r < kd + ks) {
@@ -583,41 +490,18 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
     out_Ray.org = incidentPoint;
 }
 
-
-//void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal,
-//                                 Ray &out_Ray) const {
-//    /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
-//    Eigen::Vector3d u, v;
-//    computeLocalFrame(normal, u, v);
-//
-//    /// BRDFそのまま用いる
-//    const double phi = 2 * PI * rand();
-//    const double theta = acos(1 - rand());
-//
-//    /// theta, phiから出射ベクトルを計算
-//    const double _x = sin(theta) * cos(phi);
-//    const double _y = cos(theta);
-//    const double _z = sin(theta) * sin(phi);
-//
-//    /// ローカルベクトルからグローバルのベクトルに変換
-//    out_Ray.dir = _x * u + _y * normal + _z * v;
-//
-//    out_Ray.org = incidentPoint;
-//}
-
 void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal,
                                  Ray &out_Ray) const {
     /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
     Eigen::Vector3d u, v;
     computeLocalFrame(normal, u, v);
 
-    /// ニュートン法でthetaの値を求める
-    //const double y = rand();
+    int count = 0;  // 収束しなかった回数
 
     try {
-        const double theta = newton_method();
+        //const double theta = newton_method();
         const double phi = 2 * PI * rand();
-        //const double theta = acos(1 - rand());
+        const double theta = acos(1 - 2 * rand());  // sinのみのに沿わせる
 
         /// theta, phiから出射ベクトルを計算
         const double _x = sin(theta) * cos(phi);
@@ -639,6 +523,7 @@ double Renderer::newton_method() const {
 
     /// 初期値
     double x = 0.5 * PI;
+    //double x = y * PI;
 
     for (int i = 0; i < 100; ++i) {
         double fx = (x - 0.5 * std::sin(2.0 * x)) / PI - y;
@@ -656,7 +541,12 @@ double Renderer::newton_method() const {
 
         x = x_new;
     }
+    ++exceptionCount; // カウントを増やす
     throw std::runtime_error("Newton method did not converge within the given max_iter.");
+}
+
+void Renderer::printExceptionCount() const {
+    std::cout << "Number of Newton method convergence failures: " << exceptionCount << std::endl;
 }
 
 void Renderer::specularSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, const double & n) const {

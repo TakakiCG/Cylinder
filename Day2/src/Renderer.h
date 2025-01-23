@@ -23,6 +23,10 @@ public:
     mutable std::mt19937_64 engine;
     mutable std::uniform_real_distribution<> dist;
 
+    /// newton法で収束しなった回数カウント用
+    mutable int exceptionCount; // mutableにしてconst関数内でも変更可能にする
+    void printExceptionCount() const; // 新しい関数
+
     Renderer(const std::vector<Body> &bodies, Camera camera, Color bgColor=Color::Zero());
 
     double rand() const;
@@ -38,6 +42,8 @@ public:
     Image _directIlluminationRender(const unsigned int &samples) const;
 
     Image passTracingRender(const unsigned int &samples) const;
+
+    Image passTracingRender_antiAreas(const unsigned int &samples) const;
 
     Color trace(const Ray &ray, const RayHit &hit) const;
 
@@ -75,6 +81,7 @@ private:
     // Marschnerモデルのヘルパー関数
     double computeLongitudinalScattering(double theta_i, double theta_r, double beta_m) const;
     double computeAzimuthalScattering(double phi, double beta_n) const;
+
 };
 
 
