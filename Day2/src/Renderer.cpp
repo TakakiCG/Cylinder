@@ -258,7 +258,8 @@ Image Renderer::passTracingRender(const unsigned int &samples) const {
             if (hitScene(ray, hit)) {
                 Color accumulatedColor = Color::Zero();
                 for (int i = 0; i < samples; ++i) {
-                    accumulatedColor += trace(ray, hit);
+                    //accumulatedColor += trace(ray, hit);
+                    accumulatedColor += traceMarschner(ray, hit);
                 }
                 color = accumulatedColor / static_cast<double>(samples);
             } else {
@@ -361,10 +362,10 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
     else if(hitBody.type == Body::Type::Cylinder && hitBody.material.shadingModel == Material::KAJIYA_KAY) {
         if(r < kd) {
             Ray _ray; RayHit _hit;
-            diffuseSampleHair(hit.point, hit.normal, _ray);
+            //diffuseSampleHair(hit.point, hit.normal, _ray);
 
             /// Marschner
-            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+            marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
 
             hitScene(_ray, _hit);
 
@@ -392,10 +393,10 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
         }
         else if(r < kd + ks) {
             Ray _ray; RayHit _hit;
-            specularSampleHair(hit.point, hit.normal, _ray, hitBody.material.n);
+            //specularSampleHair(hit.point, hit.normal, _ray, hitBody.material.n);
 
             /// Marschner
-            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+            marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
 
             hitScene(_ray, _hit);
 
@@ -411,6 +412,115 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
 //            // 鏡面BRDF
 //            const double specularTerm = pow(sqrt(std::max(0.0, 1.0 - tDotL * tDotL)) * sqrt(std::max(0.0, 1.0 - tDotV * tDotV)) - tDotL * tDotV,
 //                                      hitBody.material.n);
+
+            if(bodies[_hit.idx].isLight()) {
+                // 光源の輝度
+                const Color emission = bodies[_hit.idx].getEmission();
+                //out_color += specularTerm * hitBody.getKs().cwiseProduct(emission) / ks;
+                out_color += hitBody.getKs().cwiseProduct(emission) / ks;
+            }
+            else {
+                //out_color+= specularTerm * hitBody.getKs().cwiseProduct(trace(_ray, _hit));
+                out_color += hitBody.getKs().cwiseProduct(trace(_ray, _hit)) / ks;
+            }
+        }
+    }
+
+    return out_color;
+}
+
+Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
+    if(!hit.isHit()) {
+        return Color::Zero();
+    }
+
+    const auto hitBody = bodies[hit.idx];
+
+    // 衝突物体の自己発光を足す
+    Color out_color = hitBody.getEmission();
+
+    // ロシアンルーレット
+    const double kd = hitBody.getKd().maxCoeff();
+    const double ks = hitBody.getKs().maxCoeff();
+    const double r = rand();
+
+    /// added
+    // ロシアンルーレット確率(例)
+    double p_survive = 0.9;  // 適宜調整
+    if (rand() > p_survive) {
+        return out_color; // 打ち切り
+    }
+
+    // 入射方向
+    Eigen::Vector3d wi = -ray.dir.normalized();
+    ///
+
+    if (hitBody.type == Body::Type::Sphere) {
+        if(r < kd){
+            Ray _ray; RayHit _hit;
+            diffuseSample(hit.point, hit.normal, _ray);
+
+            hitScene(_ray, _hit);
+            if(bodies[_hit.idx].isLight()) {
+                return out_color += hitBody.getKd().cwiseProduct(bodies[_hit.idx].getEmission()) / kd;
+            }
+            else {
+                out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit));
+            }
+        }
+    }
+    else if(hitBody.type == Body::Type::Cylinder && hitBody.material.shadingModel == Material::KAJIYA_KAY) {
+        if(r < kd) {
+            Ray _ray; RayHit _hit;
+            /// Marschner
+            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+
+            Eigen::Vector3d w, v;
+            Eigen::Vector3d u = hitBody.cylinder.axis;
+            computeLocalFrame(u, w, v);
+
+            // 入射光ベクトルをローカル基底に変換（w, v平面への投影を計算する）
+            Eigen::Vector3d neg_in_dir = -ray.dir;
+
+            // w, v平面への投影ベクトルを計算する
+            Eigen::Vector3d projected_on_wv = neg_in_dir.dot(w) * w + neg_in_dir.dot(v) * v;
+
+            // 2.1. 出射角theta_oの計算（w, v平面への垂直成分を基に）
+            double theta_r = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+
+            // 2.2. 出射角phi_oの計算（w, v平面上での投影方向）
+            double phi_r = atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
+
+            // 2.3. theta_iを-π/2 ~ +π/2の範囲に調整
+            if (neg_in_dir.dot(w) < 0) {
+                // -in_Rayがw, v平面で-u方向にある場合、theta_iは負になるべき
+                theta_r = -theta_r;
+            }
+
+            double sinTheta_r = sin(theta_r);
+            double cosTheta_r = sqrt(1 - sqrt(sinTheta_r));
+
+            hitScene(_ray, _hit);
+            Eigen::Vector3d n = _hit.normal; //衝突点の法線n
+            /// 衝突点の法線とrayをvw平面に投影したベクトルとの内積を取る
+
+
+            if(bodies[_hit.idx].isLight()) {
+                // 光源の輝度
+                const Color emission = bodies[_hit.idx].getEmission();
+                //out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
+            }
+            else{
+                //out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+            }
+        }
+        else if(r < kd + ks) {
+            Ray _ray; RayHit _hit;
+
+            /// Marschner
+            marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+
+            hitScene(_ray, _hit);
 
             if(bodies[_hit.idx].isLight()) {
                 // 光源の輝度
@@ -460,29 +570,37 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
     // w, v平面への投影ベクトルを計算する
     Eigen::Vector3d projected_on_wv = neg_in_dir.dot(w) * w + neg_in_dir.dot(v) * v;
 
-    // 2.1. 入射角theta_iの計算（w, v平面への垂直成分を基に）
-    double theta_i = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+    // 2.1. 出射角theta_oの計算（w, v平面への垂直成分を基に）
+    double theta_r = acos(neg_in_dir.dot(u)); // w軸に対する傾き
 
-    // 2.2. 入射角phi_iの計算（w, v平面上での投影方向）
-    double phi_i = atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
+    // 2.2. 出射角phi_oの計算（w, v平面上での投影方向）
+    double phi_r = atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
 
     // 2.3. theta_iを-π/2 ~ +π/2の範囲に調整
     if (neg_in_dir.dot(w) < 0) {
         // -in_Rayがw, v平面で-u方向にある場合、theta_iは負になるべき
-        theta_i = -theta_i;
+        theta_r = -theta_r;
     }
+
+    double sinTheta_r = sin(theta_r);
+    double cosTheta_r = sqrt(1 - sqrt(sinTheta_r));
+
+    Ray _ray; RayHit _hit;
+    hitScene(_ray, _hit);
+    double gamma_i =
+
 
 
     /// MとNによる出射角の決定
     /// ・・・
     /// 今は鏡面反射
-    const double theta_r = - theta_i;
-    const double phi_r = phi_i;
+    const double theta_i = - theta_r;
+    const double phi_i = phi_r;
 
     /// theta, phiから出射ベクトルを計算
-    const double _x = cos(theta_r) * sin(phi_r);
-    const double _y = sin(theta_r);
-    const double _z = cos(theta_r) * cos(phi_r);
+    const double _x = cos(theta_i) * sin(phi_i);
+    const double _y = sin(theta_i);
+    const double _z = cos(theta_i) * cos(phi_i);
 
     /// ローカルベクトルからグローバルのベクトルに変換
     out_Ray.dir = _x * w + _y * u + _z * v;

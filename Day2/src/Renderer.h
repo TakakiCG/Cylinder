@@ -47,6 +47,8 @@ public:
 
     Color trace(const Ray &ray, const RayHit &hit) const;
 
+    Color traceMarschner(const Ray &ray, const RayHit &hit) const;
+
     void diffuseSample(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray) const;
 
     void diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray) const;
