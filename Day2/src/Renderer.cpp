@@ -369,26 +369,26 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
 
             hitScene(_ray, _hit);
 
-            // レイを飛ばす髪の軸方向
-            const Eigen::Vector3d T = bodies[hit.idx].cylinder.axis.normalized();
-            // 次のレイの方向 L
-            const Eigen::Vector3d L = (_hit.point - hit.point).normalized();
-            // 前の髪から次の髪の方向(視線方向) V
-            const Eigen::Vector3d V = -ray.dir.normalized();
-
-            const double tDotL = std::clamp(T.dot(L), -1.0, 1.0);
-            // 拡散BRDF
-            const double diffuseTerm = sqrt(std::max(0.0, 1.0 - tDotL * tDotL));
+//            // レイを飛ばす髪の軸方向
+//            const Eigen::Vector3d T = bodies[hit.idx].cylinder.axis.normalized();
+//            // 次のレイの方向 L
+//            const Eigen::Vector3d L = (_hit.point - hit.point).normalized();
+//            // 前の髪から次の髪の方向(視線方向) V
+//            const Eigen::Vector3d V = -ray.dir.normalized();
+//
+//            const double tDotL = std::clamp(T.dot(L), -1.0, 1.0);
+//            // 拡散BRDF
+//            const double diffuseTerm = sqrt(std::max(0.0, 1.0 - tDotL * tDotL));
 
             if(bodies[_hit.idx].isLight()) {
                 // 光源の輝度
                 const Color emission = bodies[_hit.idx].getEmission();
-                out_color += diffuseTerm * hitBody.getKd().cwiseProduct(emission) / kd; // sin１個のみに沿わせる
-                //out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
+                //out_color += diffuseTerm * hitBody.getKd().cwiseProduct(emission) / kd; // sin１個のみに沿わせる
+                out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
             }
             else{
-                out_color += diffuseTerm * hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
-                //out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+                //out_color += diffuseTerm * hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+                out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
             }
         }
         else if(r < kd + ks) {
@@ -471,7 +471,6 @@ Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
     }
     else if(hitBody.type == Body::Type::Cylinder && hitBody.material.shadingModel == Material::KAJIYA_KAY) {
         if(r < kd) {
-            Ray _ray; RayHit _hit;
             /// Marschner
             //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
 
@@ -483,36 +482,46 @@ Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
             Eigen::Vector3d neg_in_dir = -ray.dir;
 
             // w, v平面への投影ベクトルを計算する
-            Eigen::Vector3d projected_on_wv = neg_in_dir.dot(w) * w + neg_in_dir.dot(v) * v;
+            Eigen::Vector3d projected_on_wv = (neg_in_dir.dot(w) * w + neg_in_dir.dot(v) * v).normalized();
 
-            // 2.1. 出射角theta_oの計算（w, v平面への垂直成分を基に）
-            double theta_r = acos(neg_in_dir.dot(u)); // w軸に対する傾き
-
-            // 2.2. 出射角phi_oの計算（w, v平面上での投影方向）
-            double phi_r = atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
-
-            // 2.3. theta_iを-π/2 ~ +π/2の範囲に調整
-            if (neg_in_dir.dot(w) < 0) {
-                // -in_Rayがw, v平面で-u方向にある場合、theta_iは負になるべき
-                theta_r = -theta_r;
+            // 2.1. 入射角theta_oの計算（w, v平面への垂直成分を基に）
+            double thetaI = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+            if(u.dot(neg_in_dir) < 0.0){
+                thetaI = - thetaI;    // rayのu成分が負ならtheta_iは負
             }
 
-            double sinTheta_r = sin(theta_r);
-            double cosTheta_r = sqrt(1 - sqrt(sinTheta_r));
-
-            hitScene(_ray, _hit);
-            Eigen::Vector3d n = _hit.normal; //衝突点の法線n
-            /// 衝突点の法線とrayをvw平面に投影したベクトルとの内積を取る
-
-
-            if(bodies[_hit.idx].isLight()) {
-                // 光源の輝度
-                const Color emission = bodies[_hit.idx].getEmission();
-                //out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
+            // 2.2. 入射角phi_oの計算（w, v平面上での投影方向）
+            double phiI = atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
+            if(w.dot(projected_on_wv) < 0.0){
+                phiI = - phiI;    // rayのw成分が負ならphi_iは負
             }
-            else{
-                //out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
-            }
+
+            double sinTheta_i = sin(thetaI);
+            double cosTheta_i = sqrt(1 - sqrt(sinTheta_i));
+
+            Eigen::Vector3d n = hit.normal.normalized(); //衝突点の法線n
+            // 衝突点の法線とrayをvw平面に投影したベクトル(projected_on_wv)との内積を取る
+            double cos_gammaI = n.dot(- projected_on_wv);
+            double sin_gammaI = std::sqrt(std::max(0.0, 1.0 - cos_gammaI * cos_gammaI));
+            // projected_on_wvがv軸より上か下かでhの符号決定(?)
+            double sign_h = ((-projected_on_wv).dot(v) >= 0.0) ? 1.0 : -1.0;
+            double h = sign_h * sin_gammaI;
+
+            // 理想的な鏡面反射と仮定してthetaDとA0_specは出すらしい
+            /// R成分のthetaRは鏡面反射とする
+
+
+
+//            Ray _ray; RayHit _hit;
+//            hitScene(_ray, _hit);
+//            if(bodies[_hit.idx].isLight()) {
+//                // 光源の輝度
+//                const Color emission = bodies[_hit.idx].getEmission();
+//                //out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
+//            }
+//            else{
+//                //out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+//            }
         }
         else if(r < kd + ks) {
             Ray _ray; RayHit _hit;
@@ -586,8 +595,8 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
     double cosTheta_r = sqrt(1 - sqrt(sinTheta_r));
 
     Ray _ray; RayHit _hit;
-    hitScene(_ray, _hit);
-    double gamma_i =
+//    hitScene(_ray, _hit);
+//    double gamma_i =
 
 
 
@@ -608,6 +617,7 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
     out_Ray.org = incidentPoint;
 }
 
+
 void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal,
                                  Ray &out_Ray) const {
     /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
@@ -617,9 +627,9 @@ void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eig
     int count = 0;  // 収束しなかった回数
 
     try {
-        //const double theta = newton_method();
+        const double theta = newton_method();
         const double phi = 2 * PI * rand();
-        const double theta = acos(1 - 2 * rand());  // sinのみのに沿わせる
+        //const double theta = acos(1 - 2 * rand());  // sinのみのに沿わせる
 
         /// theta, phiから出射ベクトルを計算
         const double _x = sin(theta) * cos(phi);

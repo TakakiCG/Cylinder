@@ -60,6 +60,7 @@ public:
     static void marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &axis,
                              Ray &out_ray) ;
 
+
     static void computeLocalFrame(const Eigen::Vector3d &w, Eigen::Vector3d &u, Eigen::Vector3d &v);
 
 /// Marschner
