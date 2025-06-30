@@ -6,11 +6,11 @@
 #include <iostream>
 #include <cmath>
 #include <algorithm>
+#include <fstream>
 
 const double PI = EIGEN_PI;
 int trace_num = 0;
 #define M_PI 3.14159265358979323846
-
 
 /// シーン内の物体、カメラ、背景色を初期化する
 Renderer::Renderer(const std::vector<Body> &bodies, Camera camera, Color bgColor)
@@ -241,6 +241,10 @@ Image Renderer::_directIlluminationRender(const unsigned int &samples) const {
 Image Renderer::passTracingRender(const unsigned int &samples) const {
     Image image(camera.getFilm().resolution.x(), camera.getFilm().resolution.y());
 
+    /// Visualize theta and phi
+    const int TARGET_PX = camera.getFilm().resolution.x() / 2;
+    const int TARGET_PY = camera.getFilm().resolution.y() / 3;
+
     exceptionCount = 0; // カウントの初期化
 
 
@@ -259,7 +263,11 @@ Image Renderer::passTracingRender(const unsigned int &samples) const {
                 Color accumulatedColor = Color::Zero();
                 for (int i = 0; i < samples; ++i) {
                     //accumulatedColor += trace(ray, hit);
-                    accumulatedColor += traceMarschner(ray, hit);
+                    //accumulatedColor += traceMarschner(ray, hit);
+
+                    /// Visualize theta and phi
+                    bool record = (p_x == TARGET_PX && p_y == TARGET_PY);
+                    accumulatedColor += trace(ray, hit, record, i); // 第4引数＝サンプル番号
                 }
                 color = accumulatedColor / static_cast<double>(samples);
             } else {
@@ -268,6 +276,24 @@ Image Renderer::passTracingRender(const unsigned int &samples) const {
             image.pixels[p_idx] = color;
         }
     }
+
+    {
+        std::ofstream csv("ray_angles2.csv");
+        csv << "sampleIdx,theta_in,phi_in,theta_out,phi_out,hitType,scatterType,reason\n";
+        for (const auto& s : g_samples) {
+            csv << s.sampleIdx      << ','
+                << s.incidentTheta  << ','
+                << s.incidentPhi  << ','
+                << s.outgoingTheta  << ','
+                << s.outgoingPhi    << ','
+                << s.hitType        << ','
+                << s.scatterType    << ','
+                << s.reason         << '\n';
+        }
+        std::cout << "Saved " << g_samples.size()
+                  << " rows to ray_angles.csv\n";
+    }
+
     printExceptionCount(); // カウントを出力
     return image;
 }
@@ -365,7 +391,7 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
             //diffuseSampleHair(hit.point, hit.normal, _ray);
 
             /// Marschner
-            marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
 
             hitScene(_ray, _hit);
 
@@ -396,7 +422,7 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
             //specularSampleHair(hit.point, hit.normal, _ray, hitBody.material.n);
 
             /// Marschner
-            marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
 
             hitScene(_ray, _hit);
 
@@ -424,6 +450,119 @@ Color Renderer::trace(const Ray &ray, const RayHit &hit) const {
                 out_color += hitBody.getKs().cwiseProduct(trace(_ray, _hit)) / ks;
             }
         }
+    }
+
+    return out_color;
+}
+
+Color Renderer::trace(const Ray &ray, const RayHit &hit, bool recordAngles, int sampleIdx) const {
+    if(!hit.isHit()) {
+        return Color::Zero();
+    }
+
+    const auto hitBody = bodies[hit.idx];
+
+    // 衝突物体の自己発光を足す
+    Color out_color = hitBody.getEmission();
+
+    /// Visualize theta and phi
+    RaySampleData tmp;                 // ← スタック上に一時確保
+    tmp.sampleIdx = sampleIdx;
+    tmp.hitType   = (hitBody.type == Body::Type::Sphere) ? "Sphere" : "Cylinder";
+
+    if (recordAngles) {
+        worldToLocalAngles(hit.normal, -ray.dir.normalized(),
+                           tmp.incidentTheta, tmp.incidentPhi);
+    }
+
+
+    // ロシアンルーレット
+    const double kd = hitBody.getKd().maxCoeff();
+    const double ks = hitBody.getKs().maxCoeff();
+//    const double kd = hitBody.material.kd;
+//    const double ks = hitBody.material.ks;
+    const double r = rand();
+
+    /// added
+    // ロシアンルーレット確率(例)
+    double p_survive = 0.9;  // 適宜調整
+//    if (rand() > p_survive) {
+//        return out_color; // 打ち切り
+//    }
+    if (rand() > p_survive) {
+        if (recordAngles) {
+            tmp.reason = "RR_terminate";
+            std::scoped_lock lk(g_mutex);
+            g_samples.emplace_back(tmp);
+        }
+        return out_color;
+    }
+    ///
+
+    if (hitBody.type == Body::Type::Sphere) {
+        if(r < kd){
+            Ray _ray; RayHit _hit;
+            //diffuseSample(hit.point, hit.normal, _ray);
+            tmp.scatterType = "Diffuse";                 // ← 追加
+            diffuseSample(hit.point, hit.normal, _ray, recordAngles, &tmp);
+
+            hitScene(_ray, _hit);
+            if(bodies[_hit.idx].isLight()) {
+                return out_color += hitBody.getKd().cwiseProduct(bodies[_hit.idx].getEmission()) / kd;
+            }
+            else {
+                out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit));
+            }
+        }
+    }
+    else if(hitBody.type == Body::Type::Cylinder && hitBody.material.shadingModel == Material::KAJIYA_KAY) {
+        if(r < kd) {
+            Ray _ray; RayHit _hit;
+            diffuseSampleHair(hit.point, hit.normal, _ray, recordAngles, &tmp);
+            tmp.scatterType = "Diffuse";
+
+            /// Marschner
+            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray, recordAngles, &tmp);
+
+            hitScene(_ray, _hit);
+
+            if(bodies[_hit.idx].isLight()) {
+                // 光源の輝度
+                const Color emission = bodies[_hit.idx].getEmission();
+                out_color += hitBody.getKd().cwiseProduct(emission) / kd;   // 重点的サンプリング済(ニュートン法)
+            }
+            else{
+                out_color += hitBody.getKd().cwiseProduct(trace(_ray, _hit)) / kd;
+            }
+        }
+        else if(r < kd + ks) {
+            Ray _ray; RayHit _hit;
+            specularSampleHair(hit.point, hit.normal, _ray, hitBody.material.n, recordAngles, &tmp);
+            tmp.scatterType = "Specular";
+
+            /// Marschner
+            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray, recordAngles, &tmp);
+
+            hitScene(_ray, _hit);
+
+
+            if(bodies[_hit.idx].isLight()) {
+                // 光源の輝度
+                const Color emission = bodies[_hit.idx].getEmission();
+                out_color += hitBody.getKs().cwiseProduct(emission) / ks;
+            }
+            else {
+                out_color += hitBody.getKs().cwiseProduct(trace(_ray, _hit)) / ks;
+            }
+        }
+        else{
+            tmp.reason = "ScatterSkip";
+        }
+    }
+
+    if (recordAngles) {
+        std::scoped_lock lk(g_mutex);   // OpenMP 排他
+        g_samples.emplace_back(tmp);
     }
 
     return out_color;
@@ -478,15 +617,15 @@ Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
             Eigen::Vector3d u = hitBody.cylinder.axis;
             computeLocalFrame(u, w, v);
 
+            Eigen::Vector3d wi = -ray.dir.normalized();
             // 入射光ベクトルをローカル基底に変換（w, v平面への投影を計算する）
-            Eigen::Vector3d neg_in_dir = -ray.dir;
-
             // w, v平面への投影ベクトルを計算する
-            Eigen::Vector3d projected_on_wv = (neg_in_dir.dot(w) * w + neg_in_dir.dot(v) * v).normalized();
+            Eigen::Vector3d projected_on_wv = (wi.dot(w) * w + wi.dot(v) * v).normalized();
 
-            // 2.1. 入射角theta_oの計算（w, v平面への垂直成分を基に）
-            double thetaI = acos(neg_in_dir.dot(u)); // w軸に対する傾き
-            if(u.dot(neg_in_dir) < 0.0){
+            // 2.1. 入射角thetaIの計算（w, v平面への垂直成分を基に）
+            //double thetaI = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+            double thetaI = acos(wi.dot(projected_on_wv));
+            if(u.dot(wi) < 0.0){
                 thetaI = - thetaI;    // rayのu成分が負ならtheta_iは負
             }
 
@@ -500,15 +639,27 @@ Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
             double cosTheta_i = sqrt(1 - sqrt(sinTheta_i));
 
             Eigen::Vector3d n = hit.normal.normalized(); //衝突点の法線n
-            // 衝突点の法線とrayをvw平面に投影したベクトル(projected_on_wv)との内積を取る
-            double cos_gammaI = n.dot(- projected_on_wv);
+            // 衝突点の法線 と rayをvw平面に投影したベクトル(projected_on_wv) との内積を取る
+            double cos_gammaI = n.dot(projected_on_wv);
+            double gammaI = std::acos(cos_gammaI);
             double sin_gammaI = std::sqrt(std::max(0.0, 1.0 - cos_gammaI * cos_gammaI));
             // projected_on_wvがv軸より上か下かでhの符号決定(?)
-            double sign_h = ((-projected_on_wv).dot(v) >= 0.0) ? 1.0 : -1.0;
+            double sign_h = ((projected_on_wv).dot(v) >= 0.0) ? 1.0 : -1.0;
             double h = sign_h * sin_gammaI;
 
             // 理想的な鏡面反射と仮定してthetaDとA0_specは出すらしい
             /// R成分のthetaRは鏡面反射とする
+//            double wi_dot_n = n.dot(neg_in_dir);
+//            const Eigen::Vector3d specular_direction = (2.0 * n * wi_dot_n - neg_in_dir).normalized();
+            double thetaR = - thetaI;
+            double thetaD = (thetaR - thetaI) / 2.0;
+            double eta = hitBody.material.eta;
+            const double etaP = std::sqrt(eta * eta - std::sin(thetaD)) / std::cos(thetaD); // d'Eon
+            const double gammaT = std::asin(h / etaP);
+
+            /// 続きここから
+            double fresnel = FresnelFunction(cos_gammaI, eta);
+            
 
 
 
@@ -527,7 +678,7 @@ Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
             Ray _ray; RayHit _hit;
 
             /// Marschner
-            marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
+            //marschnerSampleHair(ray, hit.point, hitBody.cylinder.axis, _ray);
 
             hitScene(_ray, _hit);
 
@@ -545,6 +696,26 @@ Color Renderer::traceMarschner(const Ray &ray, const RayHit &hit) const {
     }
 
     return out_color;
+}
+
+double Renderer::FresnelFunction(double cosTheta_i, double eta) const {
+    cosTheta_i = std::clamp(cosTheta_i, -1.0, 1.0);
+    // 髪の毛の内部から出射の場合
+    if(cosTheta_i < 0){
+        eta = 1 / eta;  // フレネルを式でnでまとめる
+        cosTheta_i = -cosTheta_i;
+    }
+
+    double sinTheta_i = 1 - sqrt(cosTheta_i);
+    double sinTheta_t = sinTheta_i / sqrt(eta);
+    if(sinTheta_t >= 1){
+        return 1.0;
+    }
+    double cosTheta_t = std::sqrt(1- sinTheta_t);
+
+    double r_parl = (eta * cosTheta_i - cosTheta_t) / (eta * cosTheta_i + cosTheta_t);
+    double r_perp = (cosTheta_i - eta * cosTheta_t) / (cosTheta_i + eta * cosTheta_t);
+    return (sqrt(r_parl) + sqrt(r_perp)) / 2;
 }
 
 void Renderer::diffuseSample(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray) const {
@@ -574,19 +745,20 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
     computeLocalFrame(u, w, v);
 
     // 入射光ベクトルをローカル基底に変換（w, v平面への投影を計算する）
-    Eigen::Vector3d neg_in_dir = -in_Ray.dir;
+    Eigen::Vector3d wi = -in_Ray.dir;
 
     // w, v平面への投影ベクトルを計算する
-    Eigen::Vector3d projected_on_wv = neg_in_dir.dot(w) * w + neg_in_dir.dot(v) * v;
+    Eigen::Vector3d projected_on_wv = wi.dot(w) * w + wi.dot(v) * v;
 
     // 2.1. 出射角theta_oの計算（w, v平面への垂直成分を基に）
-    double theta_r = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+    //double theta_r = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+    double theta_r = acos(wi.dot(projected_on_wv));
 
     // 2.2. 出射角phi_oの計算（w, v平面上での投影方向）
     double phi_r = atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
 
     // 2.3. theta_iを-π/2 ~ +π/2の範囲に調整
-    if (neg_in_dir.dot(w) < 0) {
+    if (wi.dot(w) < 0) {
         // -in_Rayがw, v平面で-u方向にある場合、theta_iは負になるべき
         theta_r = -theta_r;
     }
@@ -603,13 +775,64 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
     /// MとNによる出射角の決定
     /// ・・・
     /// 今は鏡面反射
-    const double theta_i = - theta_r;
+    const double theta_i = - PI/2 - theta_r;
     const double phi_i = phi_r;
 
     /// theta, phiから出射ベクトルを計算
-    const double _x = cos(theta_i) * sin(phi_i);
-    const double _y = sin(theta_i);
-    const double _z = cos(theta_i) * cos(phi_i);
+    const double _x = sin(theta_i) * sin(phi_i);    ///cos,sin入れ替えた
+    const double _y = cos(theta_i);
+    const double _z = sin(theta_i) * cos(phi_i);
+
+    /// ローカルベクトルからグローバルのベクトルに変換
+    out_Ray.dir = _x * w + _y * u + _z * v;
+
+    out_Ray.org = incidentPoint;
+}
+
+void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &axis, Ray &out_Ray, bool recordAngles, RaySampleData* rec) {
+    /// axis(u)の方向をy軸とした正規直交基底を作る (w, u, v)
+    Eigen::Vector3d w, v;
+    Eigen::Vector3d u = axis;
+    computeLocalFrame(u, w, v);
+
+    // 入射光ベクトルをローカル基底に変換（w, v平面への投影を計算する）
+    Eigen::Vector3d wi = -in_Ray.dir;
+
+    // w, v平面への投影ベクトルを計算する
+    Eigen::Vector3d projected_on_wv = (wi.dot(w) * w + wi.dot(v) * v).normalized();
+
+    // 2.1. 出射角theta_oの計算（w, v平面への垂直成分を基に）
+    //double theta_r = acos(neg_in_dir.dot(u)); // w軸に対する傾き
+    double theta_i = std::acos(wi.dot(projected_on_wv));
+
+    // 2.2. 出射角phi_oの計算（w, v平面上での投影方向）
+    double phi_i = std::atan2(projected_on_wv.dot(v), projected_on_wv.dot(w)); // w, v平面での角度
+
+    // 2.3. theta_iを-π/2 ~ +π/2の範囲に調整
+    if (wi.dot(w) < 0) {
+        // -in_Rayがw, v平面で-u方向にある場合、theta_iは負になるべき
+        theta_i = -theta_i;
+    }
+
+    double sinTheta_i = sin(theta_i);
+    double cosTheta_i = sqrt(1 - sqrt(sinTheta_i));
+
+    Ray _ray; RayHit _hit;
+//    hitScene(_ray, _hit);
+//    double gamma_i =
+
+
+
+    /// MとNによる出射角の決定
+    /// ・・・
+    /// 今は鏡面反射
+    const double theta_o = - PI/2 - theta_i;
+    const double phi_o = phi_i;
+
+    /// theta, phiから出射ベクトルを計算
+    const double _x = sin(theta_o) * sin(phi_o);    ///cos,sin入れ替えた
+    const double _y = cos(theta_o);
+    const double _z = sin(theta_o) * cos(phi_o);
 
     /// ローカルベクトルからグローバルのベクトルに変換
     out_Ray.dir = _x * w + _y * u + _z * v;
@@ -618,8 +841,7 @@ void Renderer::marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &inc
 }
 
 
-void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal,
-                                 Ray &out_Ray) const {
+void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray) const {
     /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
     Eigen::Vector3d u, v;
     computeLocalFrame(normal, u, v);
@@ -721,25 +943,110 @@ void Renderer::computeLocalFrame(const Eigen::Vector3d &w, Eigen::Vector3d &u, E
     v = w.cross(u);
 }
 
-/// Marschner
-//Color Renderer::fur_bsdf(const Eigen::Vector3d &wi, const Eigen::Vector3d &wo, const BSDFParams &params) const {
-//    const double eta = params.eta;
-//    const double alpha_R = params.alpha_R;
-//    const double alpha_TT = - alpha_R / 2;
-//    const double alpha_TRT = - 3 * alpha_R / 2;
-//    const double beta_R = params.beta_R;
-//    const double beta_TT = beta_R / 2;
-//    const double beta_TRT = 2 * beta_R;
-//
-//    /// wo:視線方向　wi:ライト方向
-//    const double sinTheta_o = wo.x();
-//    const double cosTheta_o = 1.0 - sqrt(sinTheta_o);
-//    const double phi_o = atan2(wo.z(), wo.y());
-//
-//    const double sinTheta_i = wi.x();
-//    const double cosTheta_i = 1.0 - sqrt(sinTheta_i);
-//    const double phi_i = atan2(wi.z(), wi.y());
-//
-//    const double sinTheta_t = sinTheta_o / eta;
-//
-//}
+void Renderer::diffuseSample(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, bool recordAngles, RaySampleData* rec) const {
+    /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
+    Eigen::Vector3d u, v;
+    computeLocalFrame(normal, u, v);
+
+    const double phi = 2.0 * EIGEN_PI * rand();
+    const double theta = asin(sqrt(rand()));
+
+    /// theta, phiから出射ベクトルを計算
+    const double _x = sin(theta) * cos(phi);
+    const double _y = cos(theta);
+    const double _z = sin(theta) * sin(phi);
+
+    /// ローカルベクトルからグローバルのベクトルに変換
+    out_Ray.dir = _x * u + _y * normal + _z * v;
+
+
+    out_Ray.org = incidentPoint;
+
+    if (recordAngles && rec) {
+        rec->outgoingTheta = theta;
+        rec->outgoingPhi   = phi;
+    }
+}
+
+void Renderer::diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, bool recordAngles, RaySampleData* rec) const {
+    /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
+    Eigen::Vector3d u, v;
+    computeLocalFrame(normal, u, v);
+
+    int count = 0;  // 収束しなかった回数
+
+    try {
+        double theta = newton_method();
+        // ↑背面へのケースがあったため修正
+        if (theta > M_PI/2)                      // 背面→前面へ折り返し
+            theta = M_PI - theta;
+        const double phi = 2 * PI * rand();
+
+        /// theta, phiから出射ベクトルを計算
+        const double _x = sin(theta) * cos(phi);
+        const double _y = cos(theta);
+        const double _z = sin(theta) * sin(phi);
+
+        /// ローカルベクトルからグローバルのベクトルに変換
+        out_Ray.dir = _x * u + _y * normal + _z * v;
+
+        out_Ray.org = incidentPoint;
+
+        if (recordAngles && rec) {
+            rec->outgoingTheta = theta;
+            rec->outgoingPhi   = phi;
+        }
+
+    } catch (const std::exception &e) {
+        std::cerr << "エラー: " << e.what() << std::endl;
+    }
+}
+
+void Renderer::specularSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, const double & n, bool recordAngles, RaySampleData* rec) const {
+    /// normalの方向をy軸とした正規直交基底を作る (u, normal, v)
+    Eigen::Vector3d u, v;
+    computeLocalFrame(normal, u, v);
+
+    double theta;
+    double phi;
+
+//    while(true){
+    phi = 2.0 * PI * rand();
+    /// cos^nの逆関数法によるサンプリング
+    const double r = rand();
+    //theta = acos(pow(r, 1.0 / (n + 1.0)));
+    theta = acos(pow(1.0 - r, 1.0 / (n + 1.0)));
+
+    /// theta, phiから出射ベクトルを計算
+    const double _x = sin(theta) * cos(phi);
+    const double _y = cos(theta);
+    const double _z = sin(theta) * sin(phi);
+
+    /// ローカルベクトルからグローバルのベクトルに変換
+    out_Ray.dir = _x * u + _y * normal + _z * v;
+    out_Ray.org = incidentPoint;
+
+    if (recordAngles && rec) {
+        rec->outgoingTheta = theta;
+        rec->outgoingPhi   = phi;
+    }
+}
+
+// w = 法線 n
+void Renderer::worldToLocalAngles(const Eigen::Vector3d& n, const Eigen::Vector3d& dir, double& theta, double& phi) const
+{
+    Eigen::Vector3d u, v;          // u,v,n で正規直交基底
+    computeLocalFrame(n, u, v);    // 既存関数
+
+    double cosT = std::clamp(dir.dot(n), -1.0, 1.0);
+    theta = std::acos(cosT);
+
+    Eigen::Vector3d proj = (dir - cosT * n);
+    if (proj.norm() < 1e-8) {              // 極 (proj ≈0) は φ=0 扱い
+        phi = 0.0;
+    } else {
+        proj.normalize();
+        phi = std::atan2(proj.dot(v), proj.dot(u));
+    }
+}
+

@@ -60,8 +60,39 @@ public:
     static void marschnerSampleHair(const Ray &in_Ray, const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &axis,
                              Ray &out_ray) ;
 
+    double FresnelFunction(double cos_gammaI, double eta) const;
 
     static void computeLocalFrame(const Eigen::Vector3d &w, Eigen::Vector3d &u, Eigen::Vector3d &v);
+
+    /// Visualize theta and phi
+    struct RaySampleData {
+        int    sampleIdx     = 0;    // 何番目のサンプルか
+        double incidentTheta = 0.0;  // θ_in  [rad]
+        double incidentPhi   = 0.0;
+        double outgoingTheta = 0.0;  // θ_out [rad]
+        double outgoingPhi   = 0.0;  // φ_out [rad]
+
+        std::string hitType      = "Unknown";   // "Sphere" or "Cylinder"
+        std::string scatterType  = "None";      // "Diffuse" or "Specular" (or "None")
+        std::string reason      = "N/A";       // why scatterType == None
+    };
+
+    mutable std::vector<RaySampleData> g_samples;
+    mutable std::mutex                 g_mutex;
+
+    Color trace(const Ray &ray, const RayHit &hit, bool recordAngles, int sampleIdx) const;
+
+    void diffuseSample(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, bool recordAngles, RaySampleData* rec) const;
+    void diffuseSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, bool recordAngles, RaySampleData* rec) const;
+    void specularSampleHair(const Eigen::Vector3d &incidentPoint, const Eigen::Vector3d &normal, Ray &out_Ray, const double & n, bool recordAngles, RaySampleData* rec) const;
+    void worldToLocalAngles(const Eigen::Vector3d& n, const Eigen::Vector3d& dir, double& theta, double& phi) const;
+    static void marschnerSampleHair(const Ray& in_Ray,
+                                    const Eigen::Vector3d& incidentPoint,
+                                    const Eigen::Vector3d& axis,
+                                    Ray& out_Ray,
+                                    bool recordAngles = false,
+                                    RaySampleData* rec = nullptr);
+
 
 /// Marschner
 //    struct BSDFParams{
@@ -84,7 +115,6 @@ private:
     // Marschnerモデルのヘルパー関数
     double computeLongitudinalScattering(double theta_i, double theta_r, double beta_m) const;
     double computeAzimuthalScattering(double phi, double beta_n) const;
-
 };
 
 

@@ -64,7 +64,7 @@ std::vector<Body> HairGenerator::generateHairs(int numHairs, int numSegments, do
             if (segmentLength > 1e-6) {
                 segmentDir.normalize();
                 Cylinder cylinder(hairRadius, segmentLength, prevPoint, segmentDir);    // 黒茶#25160E
-                Material hairMaterial(Color(0.2, 0.1, 0.05), 0.0, 0.0, 0.7, 150.0,
+                Material hairMaterial(Color(0.2, 0.1, 0.05), 0.2, 0.0, 0.7, 150.0,
                                       1.55, Color(0.2, 0.1, 0.05), 0.3, 0.3, Material::KAJIYA_KAY);
 //                Cylinder cylinder(hairRadius, segmentLength, prevPoint, segmentDir);
 //                Material hairMaterial(Color(0.005, 0.005, 0.005), 0.2, 0.0, 0.7, 300.0,

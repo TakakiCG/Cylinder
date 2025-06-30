@@ -76,6 +76,7 @@ void roomRenderingSample() {
 
     std::vector<Body> bodies {
             //Body(Cylinder(1.0, 20.0, Eigen::Vector3d(0, -10, 30), Eigen::Vector3d::UnitY()), Material(Color(0.2, 0.1, 0.05), 0.2, 0.0, 0.7, 150.0)),
+            //Body(Cylinder(1.0, 10, Eigen::Vector3d(5, 0, 30), - Eigen::Vector3d::UnitX()), Material(Color(0.2, 0.1, 0.05), 0.2, 0.0, 0.7, 150.0)),
 
             //Body(Cylinder(1.0, 20.0, Eigen::Vector3d(0, -10, 30), Eigen::Vector3d::UnitY()), Material(Color(1.0, 1.0, 1.0), 0.4, 0.0, 0.5, 150.0)),
             //Body(Sphere(1.0, , Eigen::Vector3d(0, -14.5, 0), Eigen::Vector3d::UnitY()), Material(codeToColor("#864A2B"), 0.8, 0.0, 0.2)),
@@ -89,7 +90,7 @@ void roomRenderingSample() {
 
 //            Body(Cylinder(1.0, 20, Eigen::Vector3d(-10, 15, 25), Eigen::Vector3d::UnitX()), Material(codeToColor("#e597b2"), 1.0, 100))
 
-            Body(Cylinder(5.0, 30, Eigen::Vector3d(-15, 25, 30), Eigen::Vector3d::UnitX()), Material(codeToColor("#e597b2"), 1.0, 100)),    // 上
+            Body(Cylinder(5.0, 30, Eigen::Vector3d(-15, 25, 30), Eigen::Vector3d::UnitX()), Material(codeToColor("#e597b2"), 1.0, 100)),    // 上#e597b2
             //Body(Cylinder(1.0, 30, Eigen::Vector3d(-15, 3, 40), Eigen::Vector3d::UnitZ()), Material(codeToColor("#e597b2"), 1.0, 100)),     // 左
             //Body(Cylinder(1.0, 30, Eigen::Vector3d(15, 3, 40), Eigen::Vector3d::UnitZ()), Material(codeToColor("#e597b2"), 1.0, 100))       // 右
             Body(Cylinder(1.0, 30, Eigen::Vector3d(-15, 5.5, 40), Eigen::Vector3d::UnitX()), Material(codeToColor("#e597b2"), 1.0, 50)),    // 手前
@@ -117,7 +118,7 @@ void roomRenderingSample() {
 
     /// 髪の毛を生成して bodies に追加
     std::cout << "Generating hairs ..." << std::endl;
-    std::vector<Body> hairs = HairGenerator::generateHairs(10000, 5, 0.025, headCenter, headRadius);  // 0.05
+    std::vector<Body> hairs = HairGenerator::generateHairs(5000, 5, 0.025, headCenter, headRadius);  // 0.05
     bodies.insert(bodies.end(), hairs.begin(), hairs.end());
     std::cout << "Hairs were generated." << std::endl;
 
@@ -127,7 +128,7 @@ void roomRenderingSample() {
     const Eigen::Vector3d campos(0, 0, 80);
     const Eigen::Vector3d camdir = Eigen::Vector3d(0, 0, 0) - campos;
 
-//    const Camera camera(campos, camdir, 540, 3.0 / 4.0, 25, 45);
+    //const Camera camera(campos, camdir, 540, 3.0 / 4.0, 60, 45);
     const Camera camera(campos, camdir, 540, 3.0 / 4.0, 25 , 45);    // vertical25
 
     /// 背景色はわかりやすく灰色
@@ -136,7 +137,7 @@ void roomRenderingSample() {
 
     //std::cout << "Rendered a Image1" << std::endl;
 
-    const unsigned int samples = 5000;
+    const unsigned int samples = 100;
 //    const unsigned int areas_n_samples = 10;
 //    const unsigned int _samples = samples / areas_n_samples;
     //const auto image2 = renderer._directIlluminationRender(samples).apply_reinhard_extended_tone_mapping().apply_gamma_correction();
@@ -149,27 +150,28 @@ void roomRenderingSample() {
 //    image.save("sample_image_cylinder.png");
     //image2.save("rayTracing_sample_5000_KK_10000_r0.025_diff_newton.png");
     //image2.save("Phong_specular_ray_test_nonNorm.png");
-    image3.save("passTracing_sample_5000_KK_10000_kd00_ks07_n150.png");
+    //image3.save("passTracing_sample_5000_KK_10000_kd02_ks07_n150.png");
     //image3.save("passTracing_test_ks05_150_newton.png");
     //image2.save("rayTracing_test_straight.png");
-    //image3.save("M_test.png");
+    //image3.save("visualize.png");
+    image3.save("test.png");
 
 }
 
-// int main() {
-//     auto start = std::chrono::steady_clock::now();
-//     std::cout << "Hello, World!" << std::endl;
-//     intersectTest();
-//
-//     roomRenderingSample();
-//
-//     auto end = std::chrono::steady_clock::now();
-//     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
-//     auto minutes = std::chrono::duration_cast<std::chrono::minutes>(duration);
-//     auto seconds = duration - minutes;
-//     std::cout << "経過時間: " << minutes.count() << " 分 " << seconds.count() << " 秒" << std::endl;
-//     return 0;
-// }
+ int main() {
+     auto start = std::chrono::steady_clock::now();
+     std::cout << "Hello, World!" << std::endl;
+     intersectTest();
+
+     roomRenderingSample();
+
+     auto end = std::chrono::steady_clock::now();
+     auto duration = std::chrono::duration_cast<std::chrono::seconds>(end - start);
+     auto minutes = std::chrono::duration_cast<std::chrono::minutes>(duration);
+     auto seconds = duration - minutes;
+     std::cout << "経過時間: " << minutes.count() << " 分 " << seconds.count() << " 秒" << std::endl;
+     return 0;
+ }
 
 cv::Mat createAcademicColorBar(int height,
                                int barWidth,
@@ -268,49 +270,49 @@ cv::Mat createAcademicColorBar(int height,
     return colorBar;
 }
 
-int main()
-{
-    // 1. 入力画像を読み込む (グレースケール)
-    cv::Mat inputImage = cv::imread("passTracing_sample_5000_KK_10000_kd02_ks07_n150.png", cv::IMREAD_GRAYSCALE);
-    if (inputImage.empty()) {
-        std::cerr << "Error: Could not open the image file!" << std::endl;
-        return -1;
-    }
-
-    // 2. 入力画像の最小値・最大値を取得
-    double minVal, maxVal;
-    cv::minMaxLoc(inputImage, &minVal, &maxVal);
-
-    // 3. 画像を 0～255 に正規化 (可視化用)
-    cv::Mat normalizedImage;
-    cv::normalize(inputImage, normalizedImage, 0, 255, cv::NORM_MINMAX, CV_8UC1);
-
-    // 4. ヒートマップを作成
-    cv::Mat heatmap;
-    cv::applyColorMap(normalizedImage, heatmap, cv::COLORMAP_JET);
-
-    // 5. カラーバーを作成 (範囲は0～255)
-    int barHeight = heatmap.rows;
-    int barWidth = 40;    // 実際のカラーグラデーション部分の幅
-    int textMargin = 70;  // 目盛り用マージン (テキスト描画領域)
-
-    cv::Mat colorBar = createAcademicColorBar(barHeight,
-                                              barWidth,
-                                              textMargin,
-                                              0,     // カラーバーの最小値
-                                              255);  // カラーバーの最大値
-
-    // 6. ヒートマップとカラーバーを横に結合
-    cv::Mat combined;
-    cv::hconcat(heatmap, colorBar, combined);
-
-    // 7. 結果を保存
-    cv::imwrite("heatmap_pass_kd02_ks07_n150.png", combined);
-
-    // 8. 結果を表示
-    cv::imshow("Heatmap with Academic Colorbar", combined);
-    cv::waitKey(0);
-
-    return 0;
-}
+//int main()
+//{
+//    // 1. 入力画像を読み込む (グレースケール)
+//    cv::Mat inputImage = cv::imread("passTracing_sample_5000_KK_10000_kd02_ks07_n150.png", cv::IMREAD_GRAYSCALE);
+//    if (inputImage.empty()) {
+//        std::cerr << "Error: Could not open the image file!" << std::endl;
+//        return -1;
+//    }
+//
+//    // 2. 入力画像の最小値・最大値を取得
+//    double minVal, maxVal;
+//    cv::minMaxLoc(inputImage, &minVal, &maxVal);
+//
+//    // 3. 画像を 0～255 に正規化 (可視化用)
+//    cv::Mat normalizedImage;
+//    cv::normalize(inputImage, normalizedImage, 0, 255, cv::NORM_MINMAX, CV_8UC1);
+//
+//    // 4. ヒートマップを作成
+//    cv::Mat heatmap;
+//    cv::applyColorMap(normalizedImage, heatmap, cv::COLORMAP_JET);
+//
+//    // 5. カラーバーを作成 (範囲は0～255)
+//    int barHeight = heatmap.rows;
+//    int barWidth = 40;    // 実際のカラーグラデーション部分の幅
+//    int textMargin = 70;  // 目盛り用マージン (テキスト描画領域)
+//
+//    cv::Mat colorBar = createAcademicColorBar(barHeight,
+//                                              barWidth,
+//                                              textMargin,
+//                                              0,     // カラーバーの最小値
+//                                              255);  // カラーバーの最大値
+//
+//    // 6. ヒートマップとカラーバーを横に結合
+//    cv::Mat combined;
+//    cv::hconcat(heatmap, colorBar, combined);
+//
+//    // 7. 結果を保存
+//    cv::imwrite("heatmap_pass_kd02_ks07_n150.png", combined);
+//
+//    // 8. 結果を表示
+//    cv::imshow("Heatmap with Academic Colorbar", combined);
+//    cv::waitKey(0);
+//
+//    return 0;
+//}
 
